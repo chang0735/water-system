@@ -276,7 +276,19 @@ function newOrder(){
   loadDataForOrder();
 }
 
-// Auto-fill phone/address when a customer is selected
+// Populate customer <select> with given customer list
+function populateCustomerSelect(list, selectId){
+  var sel=document.getElementById(selectId||'ocselect');
+  if(!sel)return;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">-- 选择已有客户 --</option>'+(list||[]).map(function(c){
+    var info=[c.name,c.phone?'📞'+c.phone:'',c.address?'📍'+c.address:''].filter(Boolean).join(' | ');
+    return '<option value="'+c.id+'">'+escapeHtml(info)+'</option>';
+  }).join('');
+  if(cur)sel.value=cur;
+}
+
+// Auto-fill phone/address when a customer is selected in order form
 function onCustomerSelect(){
   var sel=document.getElementById('ocselect');
   var nameEl=document.getElementById('ocname');
@@ -284,9 +296,9 @@ function onCustomerSelect(){
   var addrEl=document.getElementById('ocaddr');
   var manualDiv=document.getElementById('ocManualFields');
   if(!sel||!nameEl||!phoneEl||!addrEl)return;
-  if(sel.value){
-    // Existing customer selected: auto-fill and collapse manual fields
-    var c=customers.find(function(x){return String(x.id)===String(sel.value);});
+  var cid=sel.value;
+  if(cid){
+    var c=customers.find(function(x){return String(x.id)===String(cid);});
     if(c){
       nameEl.value=c.name||'';
       phoneEl.value=c.phone||'';
@@ -294,10 +306,7 @@ function onCustomerSelect(){
     }
     if(manualDiv)manualDiv.style.display='none';
   }else{
-    // "Select customer" or empty: show manual inputs
-    nameEl.value='';
-    phoneEl.value='';
-    addrEl.value='';
+    nameEl.value='';phoneEl.value='';addrEl.value='';
     if(manualDiv)manualDiv.style.display='block';
   }
 }
@@ -309,7 +318,7 @@ function newCustomerFromOrder(){
     '<div class="form-group"><label>客户名称 <span style="color:#ff4d4f">*</span></label><input id="nconame" placeholder="输入客户名称"></div>'+
     '<div class="form-group"><label>电话</label><input id="ncophone" placeholder="手机号码" type="tel"></div>'+
     '<div class="form-group"><label>地址</label><input id="ncoaddr" placeholder="地址"></div>'+
-    '<div style="display:flex;gap:8px"><button class="btn btn-blue" onclick="submitCustomerFromOrder()">保存并选择</button><button class="btn btn-gray" onclick="closeModal(\'custFromOrderModal\')">取消</button></div></div></div>');
+    '<div style="display:flex;gap:8px"><button class="btn btn-blue" id="submitCustBtn" onclick="submitCustomerFromOrder()">保存并选择</button><button class="btn btn-gray" onclick="closeModal(\'custFromOrderModal\')">取消</button></div></div></div>');
 }
 
 async function submitCustomerFromOrder(){
@@ -317,42 +326,28 @@ async function submitCustomerFromOrder(){
   var phone=document.getElementById('ncophone')?document.getElementById('ncophone').value.trim():'';
   var addr=document.getElementById('ncoaddr')?document.getElementById('ncoaddr').value.trim():'';
   if(!name)return showToast('请输入客户名称','warning');
+  var btn=document.getElementById('submitCustBtn');
+  if(btn){btn.disabled=true;btn.textContent='保存中...';}
   try{
     await api('/api/customers',{method:'POST',body:{name:name,phone:phone,address:addr}});
     closeModal('custFromOrderModal');
-    showToast('客户添加成功','success');
-    // Reload customers and refresh the dropdown
-    await loadCustomersForSelect();
-    // Select the newly added customer (last in list)
-    var sel=document.getElementById('ocselect');
-    if(sel){sel.value=String(customers[customers.length-1].id);onCustomerSelect();}
-  }catch(e){showToast('添加失败: '+e.message,'error');}
-}
-
-async function loadCustomersForSelect(){
-  try{customers=await api('/api/customers');}
-  catch(e){customers=[];}
-  var sel=document.getElementById('ocselect');
-  if(!sel)return;
-  var currentVal=sel.value;
-  sel.innerHTML='<option value="">-- 选择已有客户 --</option>'+customers.map(function(c){
-    var info=[c.name,c.phone?'📞'+c.phone:'',c.address?'📍'+c.address:''].filter(Boolean).join(' | ');
-    return '<option value="'+c.id+'">'+escapeHtml(info)+'</option>';
-  }).join('');
-  sel.value=currentVal;
+    // Reload customer list from server
+    try{customers=await api('/api/customers');}catch(e){customers=[];}
+    // Repopulate the select and pick the last customer (the one just added)
+    populateCustomerSelect(customers,'ocselect');
+    if(customers.length>0){
+      var sel=document.getElementById('ocselect');
+      var newId=String(customers[customers.length-1].id);
+      if(sel){sel.value=newId;onCustomerSelect();}
+    }
+    showToast('客户已添加并选中','success');
+  }catch(e){showToast('添加失败: '+e.message,'error');if(btn){btn.disabled=false;btn.textContent='保存并选择';}}
 }
 
 async function loadDataForOrder(){
   try{products=await api('/api/products');}catch(e){products=[];showToast('加载产品失败','error');}
-  try{customers=await api('/api/customers');}catch(e){customers=[];}
-  // Populate customer dropdown
-  var sel=document.getElementById('ocselect');
-  if(sel){
-    sel.innerHTML='<option value="">-- 选择已有客户 --</option>'+customers.map(function(c){
-      var info=[c.name,c.phone?'📞'+c.phone:'',c.address?'📍'+c.address:''].filter(Boolean).join(' | ');
-      return '<option value="'+c.id+'">'+escapeHtml(info)+'</option>';
-    }).join('');
-  }
+  try{customers=await api('/api/customers');}catch(e){customers=[];showToast('加载客户失败','error');}
+  populateCustomerSelect(customers,'ocselect');
   addOrderItem();
 }
 
