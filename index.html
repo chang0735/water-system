@@ -262,24 +262,102 @@ async function doneOrder(id){if(!confirm('确认完成订单 '+id+' ?'))return;t
 function newOrder(){
   var p=document.getElementById('page-orders');
   p.insertAdjacentHTML('beforeend','<div class="modal-overlay" id="orderModal" onclick="if(event.target===this)closeModal(\'orderModal\')"><div class="modal-content"><h3>📋 新建订单</h3>'+
-    '<div class="form-group"><label>客户名称 <span style="color:#ff4d4f">*</span></label><input id="ocname" placeholder="输入客户名称"></div>'+
-    '<div class="form-group"><label>电话 <span style="color:#ff4d4f">*</span></label><input id="ocphone" placeholder="手机号码" type="tel"></div>'+
-    '<div class="form-group"><label>地址 <span style="color:#ff4d4f">*</span></label><input id="ocaddr" placeholder="配送地址"></div>'+
+    '<div class="form-group"><label>选择客户 <span style="color:#ff4d4f">*</span></label><div style="display:flex;gap:8px"><select id="ocselect" onchange="onCustomerSelect()" style="flex:1"><option value="">-- 选择已有客户 --</option></select><button class="btn btn-sm btn-blue" onclick="newCustomerFromOrder()" style="white-space:nowrap">+ 新增</button></div></div>'+
+    '<div id="ocManualFields">'+
+      '<div class="form-group"><label>客户名称 <span style="color:#ff4d4f">*</span></label><input id="ocname" placeholder="输入客户名称"></div>'+
+      '<div class="form-group"><label>电话 <span style="color:#ff4d4f">*</span></label><input id="ocphone" placeholder="手机号码" type="tel"></div>'+
+      '<div class="form-group"><label>地址 <span style="color:#ff4d4f">*</span></label><input id="ocaddr" placeholder="配送地址"></div>'+
+    '</div>'+
     '<div class="form-group"><label>备注</label><input id="ocremark" placeholder="备注信息（可选）"></div>'+
     '<div class="form-group"><label>商品 <span style="color:#ff4d4f">*</span></label><div id="orderItems"></div><button class="btn btn-sm btn-blue" onclick="addOrderItem()" style="margin-top:4px">+ 添加商品</button></div>'+
     '<div id="orderTotal" style="text-align:right;font-size:16px;font-weight:700;margin-bottom:8px">合计: ¥0.00</div>'+
     '<div style="display:flex;gap:8px"><button class="btn btn-blue" onclick="submitOrder()" id="submitOrderBtn">提交订单</button><button class="btn btn-gray" onclick="closeModal(\'orderModal\')">取消</button></div>'+
     '</div></div>');
-  loadProductsForOrder();
+  loadDataForOrder();
+}
+
+// Auto-fill phone/address when a customer is selected
+function onCustomerSelect(){
+  var sel=document.getElementById('ocselect');
+  var nameEl=document.getElementById('ocname');
+  var phoneEl=document.getElementById('ocphone');
+  var addrEl=document.getElementById('ocaddr');
+  var manualDiv=document.getElementById('ocManualFields');
+  if(!sel||!nameEl||!phoneEl||!addrEl)return;
+  if(sel.value){
+    // Existing customer selected: auto-fill and collapse manual fields
+    var c=customers.find(function(x){return String(x.id)===String(sel.value);});
+    if(c){
+      nameEl.value=c.name||'';
+      phoneEl.value=c.phone||'';
+      addrEl.value=c.address||'';
+    }
+    if(manualDiv)manualDiv.style.display='none';
+  }else{
+    // "Select customer" or empty: show manual inputs
+    nameEl.value='';
+    phoneEl.value='';
+    addrEl.value='';
+    if(manualDiv)manualDiv.style.display='block';
+  }
+}
+
+// Quick-add a customer from the order modal
+function newCustomerFromOrder(){
+  var p=document.getElementById('page-orders');
+  p.insertAdjacentHTML('beforeend','<div class="modal-overlay" id="custFromOrderModal" onclick="if(event.target===this)closeModal(\'custFromOrderModal\')" style="z-index:101"><div class="modal-content"><h3>👤 快速新增客户</h3>'+
+    '<div class="form-group"><label>客户名称 <span style="color:#ff4d4f">*</span></label><input id="nconame" placeholder="输入客户名称"></div>'+
+    '<div class="form-group"><label>电话</label><input id="ncophone" placeholder="手机号码" type="tel"></div>'+
+    '<div class="form-group"><label>地址</label><input id="ncoaddr" placeholder="地址"></div>'+
+    '<div style="display:flex;gap:8px"><button class="btn btn-blue" onclick="submitCustomerFromOrder()">保存并选择</button><button class="btn btn-gray" onclick="closeModal(\'custFromOrderModal\')">取消</button></div></div></div>');
+}
+
+async function submitCustomerFromOrder(){
+  var name=document.getElementById('nconame')?document.getElementById('nconame').value.trim():'';
+  var phone=document.getElementById('ncophone')?document.getElementById('ncophone').value.trim():'';
+  var addr=document.getElementById('ncoaddr')?document.getElementById('ncoaddr').value.trim():'';
+  if(!name)return showToast('请输入客户名称','warning');
+  try{
+    await api('/api/customers',{method:'POST',body:{name:name,phone:phone,address:addr}});
+    closeModal('custFromOrderModal');
+    showToast('客户添加成功','success');
+    // Reload customers and refresh the dropdown
+    await loadCustomersForSelect();
+    // Select the newly added customer (last in list)
+    var sel=document.getElementById('ocselect');
+    if(sel){sel.value=String(customers[customers.length-1].id);onCustomerSelect();}
+  }catch(e){showToast('添加失败: '+e.message,'error');}
+}
+
+async function loadCustomersForSelect(){
+  try{customers=await api('/api/customers');}
+  catch(e){customers=[];}
+  var sel=document.getElementById('ocselect');
+  if(!sel)return;
+  var currentVal=sel.value;
+  sel.innerHTML='<option value="">-- 选择已有客户 --</option>'+customers.map(function(c){
+    var info=[c.name,c.phone?'📞'+c.phone:'',c.address?'📍'+c.address:''].filter(Boolean).join(' | ');
+    return '<option value="'+c.id+'">'+escapeHtml(info)+'</option>';
+  }).join('');
+  sel.value=currentVal;
+}
+
+async function loadDataForOrder(){
+  try{products=await api('/api/products');}catch(e){products=[];showToast('加载产品失败','error');}
+  try{customers=await api('/api/customers');}catch(e){customers=[];}
+  // Populate customer dropdown
+  var sel=document.getElementById('ocselect');
+  if(sel){
+    sel.innerHTML='<option value="">-- 选择已有客户 --</option>'+customers.map(function(c){
+      var info=[c.name,c.phone?'📞'+c.phone:'',c.address?'📍'+c.address:''].filter(Boolean).join(' | ');
+      return '<option value="'+c.id+'">'+escapeHtml(info)+'</option>';
+    }).join('');
+  }
+  addOrderItem();
 }
 
 function closeModal(id){var el=document.getElementById(id);if(el)el.remove();}
 var orderItemIdx=0;
-
-async function loadProductsForOrder(){
-  try{products=await api('/api/products');}catch(e){products=[];showToast('加载产品列表失败','error');}
-  addOrderItem();
-}
 
 function addOrderItem(){
   var d=document.getElementById('orderItems');
@@ -341,11 +419,11 @@ async function loadCustomers(){
 
 function renderCustomers(){
   var p=document.getElementById('page-customers');
-  p.innerHTML='<div class="toolbar"><button class="btn btn-blue btn-sm" onclick="newCustomer()">+ 新增客户</button></div>'+
+  p.innerHTML='<div class="toolbar"><button class="btn btn-blue btn-sm" onclick="newCustomer()">+ 新增客户</button><span style="font-size:12px;color:#999;margin-left:auto">共 '+customers.length+' 个客户</span></div>'+
     '<div class="search-bar"><input id="custQ" placeholder="搜索客户名称/电话" oninput="debounceLoadCustomers()"><button class="btn btn-sm btn-gray" onclick="document.getElementById(\'custQ\').value=\'\';loadCustomers();">重置</button></div>'+
     (customers.length===0
       ?'<div class="empty-state"><div class="icon">👥</div><p>暂无客户数据</p></div>'
-      :customers.map(function(c){return '<div class="card" style="display:flex;justify-content:space-between;align-items:center"><div><strong>'+escapeHtml(c.name)+'</strong><br><small>📞 '+escapeHtml(c.phone||'无')+' | 📍 '+escapeHtml(c.address||'无')+'</small></div></div>';}).join(''));
+      :customers.map(function(c){return '<div class="card" style="display:flex;justify-content:space-between;align-items:center"><div><strong>'+escapeHtml(c.name)+'</strong><br><small>📞 '+escapeHtml(c.phone||'无')+' | 📍 '+escapeHtml(c.address||'无')+'</small></div><button class="btn btn-sm btn-red" onclick="delCustomer('+c.id+',\''+escapeHtml(c.name)+'\')">删除</button></div>';}).join(''));
 }
 
 function debounceLoadCustomers(){clearTimeout(debounceTimer);debounceTimer=setTimeout(function(){loadCustomers();},400);}
@@ -366,6 +444,12 @@ async function submitCustomer(){
   if(!name)return showToast('请输入客户名称','warning');
   try{await api('/api/customers',{method:'POST',body:{name:name,phone:phone,address:addr}});closeModal('custModal');showToast('客户添加成功','success');loadCustomers();}
   catch(e){showToast('添加失败: '+e.message,'error');}
+}
+
+async function delCustomer(id,name){
+  if(!confirm('确定删除客户 "'+name+'" ?\n\n注意: 删除后不可恢复，已有订单中的客户信息不受影响。'))return;
+  try{await api('/api/customers/'+encodeURIComponent(id),{method:'DELETE'});showToast('客户已删除','success');loadCustomers();}
+  catch(e){showToast('删除失败: '+e.message,'error');}
 }
 
 // ====== PRODUCTS ======
