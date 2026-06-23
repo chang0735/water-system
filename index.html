@@ -1,0 +1,197 @@
+﻿<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"><title>水站管理系统</title><style>
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;min-height:100vh;color:#333}
+.header{background:#1890ff;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:18px}.header .user{font-size:13px}.header button{background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:4px;font-size:13px;cursor:pointer}
+.nav{display:flex;background:#fff;border-bottom:1px solid #e8e8e8;overflow-x:auto}
+.nav button{flex:1;min-width:60px;padding:12px 8px;border:none;background:none;font-size:13px;cursor:pointer;white-space:nowrap;color:#666;border-bottom:2px solid transparent}
+.nav button.active{color:#1890ff;border-bottom-color:#1890ff;font-weight:600}
+.page{padding:12px;display:none}.page.active{display:block}
+.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.stat{padding:12px;border-radius:8px;text-align:center}.stat .val{font-size:24px;font-weight:700}.stat .lbl{font-size:12px;color:#666}
+.stat.blue{background:#e6f7ff}.stat.green{background:#f6ffed}.stat.orange{background:#fff7e6}.stat.red{background:#fff1f0}
+table{width:100%;border-collapse:collapse;font-size:13px}th{background:#fafafa;padding:8px;text-align:left;border-bottom:2px solid #e8e8e8;white-space:nowrap}td{padding:8px;border-bottom:1px solid #f0f0f0}
+.btn{padding:6px 12px;border:none;border-radius:4px;cursor:pointer;font-size:13px}.btn-blue{background:#1890ff;color:#fff}.btn-green{background:#52c41a;color:#fff}.btn-red{background:#ff4d4f;color:#fff}.btn-gray{background:#d9d9d9;color:#333}.btn-sm{padding:3px 8px;font-size:12px}
+.form-group{margin-bottom:12px}.form-group label{display:block;font-size:13px;color:#666;margin-bottom:4px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:8px 12px;border:1px solid #d9d9d9;border-radius:4px;font-size:14px}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal-content{background:#fff;border-radius:12px;padding:20px;width:92%;max-width:500px;max-height:80vh;overflow-y:auto}
+.login-box{max-width:360px;margin:60px auto;padding:32px 24px;background:#fff;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.login-box h2{text-align:center;margin-bottom:8px;font-size:22px}.login-box .sub{text-align:center;color:#999;font-size:13px;margin-bottom:24px}
+.role-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px}
+.role-btn{padding:16px 8px;border:2px solid #e8e8e8;border-radius:8px;background:#fff;text-align:center;cursor:pointer;font-size:13px}
+.role-btn.selected{border-color:#1890ff;background:#e6f7ff}
+.badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}.badge-pending{background:#fff7e6;color:#d46b08}.badge-ready{background:#e6f7ff;color:#1890ff}.badge-delivering{background:#fff1f0;color:#cf1322}.badge-done{background:#f6ffed;color:#389e0d}
+.status-bar{display:flex;gap:8px;margin-bottom:12px}.status-bar div{flex:1;text-align:center;padding:8px;border-radius:6px;font-size:12px;background:#f5f5f5}.status-bar .active{background:#1890ff;color:#fff}
+@media(min-width:768px){.page{padding:20px;max-width:900px;margin:0 auto}.stats{grid-template-columns:repeat(4,1fr)}}
+</style></head><body>
+<div id="app"><div class="login-box"><h2>💧 水站管理</h2><div class="sub">选择角色登录</div><div class="role-btns" id="rb"></div><div class="form-group"><input type="text" id="uname" placeholder="用户名" autocomplete="off"></div><div class="form-group"><input type="password" id="upwd" placeholder="密码"></div><button class="btn btn-blue" style="width:100%;padding:10px" onclick="doLogin()">登 录</button><p style="text-align:center;font-size:12px;color:#999;margin-top:12px" id="hint"></p></div></div>
+<script>
+const API='';
+let user=null,orders=[],customers=[],products=[],currentPage='orders';
+const roles=[{id:'sales',icon:'📋',name:'销售',desc:'订单客户'},{id:'warehouse',icon:'📦',name:'仓管',desc:'备货配送'},{id:'delivery',icon:'🚚',name:'送水工',desc:'接单配送'}];
+let selectedRole='sales';
+
+function init(){
+  let rb=document.getElementById('rb');
+  roles.forEach(r=>{
+    let b=document.createElement('button');b.className='role-btn'+(r.id===selectedRole?' selected':'');
+    b.innerHTML=r.icon+'<br>'+r.name+'<br><small>'+r.desc+'</small>';
+    b.onclick=()=>{selectedRole=r.id;document.querySelectorAll('.role-btn').forEach(x=>x.className='role-btn');b.className='role-btn selected';};
+    rb.appendChild(b);
+  });
+  document.getElementById('upwd').onkeydown=e=>{if(e.key==='Enter')doLogin();};
+}
+init();
+
+async function api(url,opts={}){
+  let o={headers:{'Content-Type':'application/json'}};
+  if(opts.method)o.method=opts.method;
+  if(opts.body)o.body=JSON.stringify(opts.body);
+  let r=await fetch(API+url,o);
+  let d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(d.error||'请求失败');
+  return d;
+}
+
+async function doLogin(){
+  let u=document.getElementById('uname').value.trim();
+  let p=document.getElementById('upwd').value;
+  if(!u||!p)return;
+  try{
+    let d=await api('/api/login',{method:'POST',body:{username:u,password:p}});
+    user=d.user;renderApp();
+  }catch(e){document.getElementById('hint').textContent=e.message;}
+}
+
+function renderApp(){
+  let app=document.getElementById('app');
+  let navItems=user.role==='sales'?['订单','客户','产品','统计']:(user.role==='warehouse'?['订单','统计']:['订单','统计']);
+  let pages=user.role==='sales'?['orders','customers','products','stats']:(user.role==='warehouse'?['orders','stats']:['orders','stats']);
+  app.innerHTML=`
+    <div class="header"><div><h1>💧 水站管理</h1><span class="user">${roles.find(r=>r.id===user.role).icon} ${user.real_name||user.username}</span></div><button onclick="logout()">退出</button></div>
+    <div class="nav">${navItems.map((n,i)=>`<button class="${i===0?'active':''}" onclick="switchPage('${pages[i]}',this)">${n}</button>`).join('')}</div>
+    <div id="page-orders" class="page active"></div>
+    <div id="page-customers" class="page"></div>
+    <div id="page-products" class="page"></div>
+    <div id="page-stats" class="page"></div>
+  `;
+  loadOrders();
+}
+function switchPage(p,btn){currentPage=p;document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById('page-'+p).classList.add('active');document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');if(p==='orders')loadOrders();if(p==='customers')loadCustomers();if(p==='products')loadProducts();if(p==='stats')loadStats();}
+function logout(){user=null;location.reload();}
+
+async function loadOrders(){
+  let q=document.getElementById('orderQ')?.value||'';
+  let st=document.getElementById('orderStatus')?.value||'';
+  try{orders=await api('/api/orders?q='+encodeURIComponent(q)+'&status='+st);}catch(e){orders=[];}
+  renderOrders();
+}
+function renderOrders(){
+  let p=document.getElementById('page-orders');
+  let statusCounts={};orders.forEach(o=>{statusCounts[o.status]=(statusCounts[o.status]||0)+1;});
+  let statuses=['pending','ready','delivering','done'];
+  let labels={pending:'待接单',ready:'已备货',delivering:'配送中',done:'已完成'};
+  p.innerHTML=`
+    ${user.role==='sales'?'<div style="margin-bottom:8px"><button class="btn btn-blue" onclick="newOrder()">+ 新建订单</button></div>':''}
+    <div class="status-bar">${statuses.map(s=>`<div class="${s===document.getElementById('orderStatus')?.value?'active':''}" onclick="$('#orderStatus').val('${s}');loadOrders()">${labels[s]} ${statusCounts[s]||0}</div>`).join('')}<div onclick="$('#orderStatus').val('');loadOrders()">全部 ${orders.length}</div></div>
+    <div style="margin-bottom:8px;display:flex;gap:8px">
+      <select id="orderStatus" onchange="loadOrders()" style="padding:6px;border-radius:4px;border:1px solid #d9d9d9"><option value="">全部状态</option>${statuses.map(s=>`<option value="${s}">${labels[s]}</option>`).join('')}</select>
+      <input id="orderQ" placeholder="搜索客户/电话" oninput="loadOrders()" style="flex:1;padding:6px 12px;border:1px solid #d9d9d9;border-radius:4px">
+    </div>
+    <div class="card" style="overflow-x:auto"><table><thead><tr><th>单号</th><th>日期</th><th>客户</th><th>电话</th><th>地址</th><th>商品</th><th>金额</th><th>状态</th><th>操作</th></tr></thead><tbody>${orders.map(o=>`
+      <tr><td><strong>${o.id}</strong></td><td>${o.date}</td><td>${o.customer_name||'-'}</td><td>${o.phone||'-'}</td><td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.address||'-'}</td><td>${(typeof o.items==='string'?JSON.parse(o.items):o.items||[]).map(i=>i.name+'×'+i.qty).join(',')||'-'}</td><td><strong>¥${o.total||0}</strong></td><td><span class="badge badge-${o.status}">${labels[o.status]||o.status}</span></td><td>${getOrderActions(o)}</td></tr>`).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:#999">暂无订单</td></tr>'}</tbody></table></div>
+  `;
+}
+function getOrderActions(o){
+  let a=[];
+  if(user.role==='sales'){
+    if(o.status==='pending')a.push('<button class="btn btn-sm btn-red" onclick="cancelOrder(\''+o.id+'\')">取消</button>');
+  }
+  if(user.role==='warehouse'){
+    if(o.status==='pending')a.push('<button class="btn btn-sm btn-green" onclick="prepareOrder(\''+o.id+'\')">备货</button>');
+  }
+  if(user.role==='delivery'){
+    if(o.status==='ready')a.push('<button class="btn btn-sm btn-blue" onclick="takeOrder(\''+o.id+'\')">接单</button>');
+    if(o.status==='delivering')a.push('<button class="btn btn-sm btn-green" onclick="doneOrder(\''+o.id+'\')">完成</button>');
+  }
+  return a.join(' ')||'-';
+}
+async function cancelOrder(id){if(!confirm('确定取消?'))return;await api('/api/orders/'+id+'/status',{method:'PATCH',body:{status:'cancelled'}});loadOrders();}
+async function prepareOrder(id){await api('/api/orders/'+id+'/status',{method:'PATCH',body:{status:'ready'}});loadOrders();}
+async function takeOrder(id){await api('/api/orders/'+id+'/status',{method:'PATCH',body:{status:'delivering'}});loadOrders();}
+async function doneOrder(id){await api('/api/orders/'+id+'/status',{method:'PATCH',body:{status:'done'}});loadOrders();}
+
+function newOrder(){
+  let p=document.getElementById('page-orders');
+  p.insertAdjacentHTML('beforeend',`<div class="modal" id="orderModal"><div class="modal-content"><h3>新建订单</h3><div class="form-group"><label>客户名称</label><input id="ocname" placeholder="输入客户名"></div><div class="form-group"><label>电话</label><input id="ocphone" placeholder="电话"></div><div class="form-group"><label>地址</label><input id="ocaddr" placeholder="地址"></div><div class="form-group"><label>商品</label><div id="orderItems"></div><button class="btn btn-sm btn-blue" onclick="addOrderItem()">+ 添加商品</button></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-blue" onclick="submitOrder()">提交</button><button class="btn btn-gray" onclick="document.getElementById('orderModal').remove()">取消</button></div></div></div>`);
+  loadProductsForOrder();
+}
+let orderItemIdx=0;
+function addOrderItem(){
+  let d=document.getElementById('orderItems');
+  d.insertAdjacentHTML('beforeend',`<div style="display:flex;gap:8px;margin-bottom:4px" id="oi${orderItemIdx}"><select id="oip${orderItemIdx}" style="flex:1">${products.map(p=>`<option value="${p.id}">${p.name} ¥${p.price}</option>`).join('')}</select><input id="oiq${orderItemIdx}" type="number" value="1" min="1" style="width:60px" placeholder="数量"><button onclick="document.getElementById('oi${orderItemIdx}').remove()">✕</button></div>`);
+  orderItemIdx++;
+}
+async function loadProductsForOrder(){try{products=await api('/products');}catch(e){products=[];}addOrderItem();}
+async function submitOrder(){
+  let items=[];
+  for(let i=0;i<orderItemIdx;i++){
+    let sel=document.getElementById('oip'+i);if(!sel)continue;
+    let qty=parseInt(document.getElementById('oiq'+i)?.value||1);
+    let p=products.find(x=>x.id===sel.value);if(p)items.push({id:p.id,name:p.name,price:p.price,qty});
+  }
+  if(items.length===0)return alert('请添加商品');
+  let total=items.reduce((s,i)=>s+i.price*i.qty,0);
+  await api('/api/orders',{method:'POST',body:{customerName:document.getElementById('ocname').value,phone:document.getElementById('ocphone').value,address:document.getElementById('ocaddr').value,items,total}});
+  document.getElementById('orderModal').remove();loadOrders();
+}
+
+async function loadCustomers(){
+  let q=document.getElementById('custQ')?.value||'';
+  try{customers=await api('/customers?q='+encodeURIComponent(q));}catch(e){customers=[];}
+  renderCustomers();
+}
+function renderCustomers(){
+  let p=document.getElementById('page-customers');
+  p.innerHTML=`
+    <div style="display:flex;gap:8px;margin-bottom:8px"><input id="custQ" placeholder="搜索客户" oninput="loadCustomers()" style="flex:1;padding:6px 12px;border:1px solid #d9d9d9;border-radius:4px"><button class="btn btn-blue btn-sm" onclick="newCustomer()">+ 新增</button></div>
+    ${customers.map(c=>`<div class="card"><strong>${c.name}</strong><br><small>📞 ${c.phone||'无'} | 📍 ${c.address||'无'}</small></div>`).join('')||'<p style="color:#999;text-align:center">暂无客户</p>'}
+  `;
+}
+function newCustomer(){
+  let n=prompt('客户名称');if(!n)return;
+  let ph=prompt('电话')||'';
+  let ad=prompt('地址')||'';
+  api('/api/customers',{method:'POST',body:{name:n,phone:ph,address:ad}}).then(loadCustomers);
+}
+
+async function loadProducts(){try{products=await api('/products');}catch(e){products=[];}renderProducts();}
+function renderProducts(){
+  let p=document.getElementById('page-products');
+  p.innerHTML=`
+    <div style="margin-bottom:8px"><button class="btn btn-blue btn-sm" onclick="newProduct()">+ 新增产品</button></div>
+    ${products.map(pr=>`<div class="card" style="display:flex;justify-content:space-between"><div><strong>${pr.name}</strong><br><small>规格:${pr.spec} | 类型:${pr.type==='bucket'?'桶装':'瓶装'}</small></div><div style="text-align:right"><strong>¥${pr.price}</strong><br><button class="btn btn-sm btn-red" onclick="delProduct('${pr.id}')">删除</button></div></div>`).join('')}
+  `;
+}
+function newProduct(){
+  let n=prompt('产品名称');if(!n)return;
+  let s=prompt('规格')||'';
+  let pr=parseFloat(prompt('价格')||'0');
+  let t=confirm('桶装水? (确定=桶装, 取消=瓶装)')?'bucket':'bottle';
+  let id='p'+Date.now();
+  api('/api/products',{method:'POST',body:{id,name:n,spec:s,price:pr,type:t}}).then(loadProducts);
+}
+async function delProduct(id){if(!confirm('确定删除?'))return;await api('/api/products/'+id,{method:'DELETE'});loadProducts();}
+
+async function loadStats(){
+  try{let d=await api('/stats');renderStats(d);}catch(e){}
+}
+function renderStats(d){
+  let p=document.getElementById('page-stats');
+  p.innerHTML=`
+    <div class="stats"><div class="stat blue"><div class="val">${d.todayOrders||0}</div><div class="lbl">今日订单</div></div><div class="stat green"><div class="val">¥${d.todayRevenue||0}</div><div class="lbl">今日营收</div></div><div class="stat orange"><div class="val">${d.pending||0}</div><div class="lbl">待接单</div></div><div class="stat red"><div class="val">${d.delivering||0}</div><div class="lbl">配送中</div></div></div>
+    <div class="card" style="margin-top:12px"><h4>累计</h4><p>总订单: ${d.totalOrders||0} | 已完成: ${d.doneCount||0} | 总营收: ¥${d.totalRevenue||0}</p></div>
+  `;
+}
+</script></body></html>
