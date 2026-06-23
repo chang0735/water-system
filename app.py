@@ -5,8 +5,8 @@ from flask import Flask, request, jsonify, g, send_from_directory
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
 BASE = os.path.dirname(os.path.abspath(__file__))
-import tempfile
-DB_PATH = os.path.join(tempfile.gettempdir(), 'water.db')
+DB_PATH = os.path.join(BASE, 'data', 'water.db')
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 def get_db():
     if 'db' not in g:
@@ -151,7 +151,7 @@ def orders_post():
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (o.get('id') or f'DD-{datetime.now():%y%m%d%H%M%S}', 
              o.get('date',datetime.now().strftime('%Y-%m-%d')),
-             o.get('customerName',''), o.get('phone',''), o.get('address',''),
+             o.get('customerName') or o.get('customer_name',''), o.get('phone',''), o.get('address',''),
              items_json, float(o.get('total',0)), o.get('status','pending'),
              o.get('remark',''), o.get('deliveryPerson',''), o.get('deliveryTime'), o.get('doneTime'), o.get('cancelTime'),
              o.get('create_time',datetime.now().isoformat()), o.get('createBy','')))

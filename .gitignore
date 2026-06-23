@@ -1,4 +1,5 @@
 water.db
+data/
 __pycache__/
 *.pyc
 tunnel_url.txt
