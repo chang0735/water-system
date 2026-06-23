@@ -5,7 +5,8 @@ from flask import Flask, request, jsonify, g, send_from_directory
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
 BASE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '/tmp'), 'water.db')
+import tempfile
+DB_PATH = os.path.join(tempfile.gettempdir(), 'water.db')
 
 def get_db():
     if 'db' not in g:
